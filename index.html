@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bill OCR & Sheet Sync - Tab Cửa hàng</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { margin: 0; background: #f3f4f6; color: #1f2937; padding: 16px; }
+    .container { max-width: 1150px; margin: 0 auto; }
+    
+    .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
+    .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input, select { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13.5px; }
+    input:focus, select:focus { outline: none; border-color: #2563eb; }
+    button { padding: 8px 14px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13.5px; transition: 0.15s; }
+    
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-secondary { background: #4b5563; color: #fff; }
+    .btn-outline { background: #fff; border: 1px solid #d1d5db; color: #374151; }
+    .btn-outline:hover { background: #f9fafb; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 850px) { .main-grid { grid-template-columns: 1fr; } }
+
+    .paste-box {
+      border: 2px dashed #3b82f6; border-radius: 8px; padding: 24px 12px;
+      text-align: center; background: #eff6ff; cursor: pointer; margin-bottom: 12px;
+    }
+    .paste-box:focus { background: #dbeafe; outline: none; }
+    #previewImg { max-width: 100%; max-height: 180px; margin-top: 10px; display: none; border-radius: 6px; border: 1px solid #cbd5e1; margin-left: auto; margin-right: auto; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px; }
+    .form-group input { width: 100%; }
+    .id-input { border: 2px solid #f59e0b !important; background: #fffbeb; font-weight: bold; }
+
+    .diff-box {
+      background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+      padding: 14px; margin-top: 12px; display: none; line-height: 1.6; font-size: 13.5px;
+    }
+    .warn-banner { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; padding: 8px; border-radius: 6px; font-weight: 600; margin-top: 8px; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 8px 6px; text-align: left; }
+    th { background: #f9fafb; font-weight: 600; color: #374151; }
+    .badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #dbeafe; color: #1e40af; }
+    .tab-locked { background: #ecfdf5; border: 1px solid #10b981; color: #065f46; font-weight: 600; cursor: not-allowed; }
+
+    #settingsPanel { display: none; background: #f8fafc; border: 1px solid #cbd5e1; }
+    .status-bar { margin-top: 10px; font-weight: 600; font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER: KẾT NỐI SHEET & KHÓA CỨNG TAB CỬA HÀNG -->
+  <div class="card">
+    <div class="flex-row" style="justify-content: space-between; margin-bottom: 10px;">
+      <strong style="font-size: 16px;">⚡ Bill OCR & Sheet Sync (Khóa cứng Tab: Cửa hàng)</strong>
+      <div class="flex-row">
+        <span id="authBadge" style="font-size: 12.5px; font-weight: 600;"></span>
+        <button class="btn-outline" onclick="loginGoogle(false)">🔑 Login Google</button>
+        <button class="btn-outline" onclick="loginGoogle(true)">🔄 Đổi tài khoản</button>
+        <button class="btn-secondary" onclick="toggleSettings()">⚙️ Cài đặt Key / Model</button>
+      </div>
+    </div>
+
+    <div class="flex-row">
+      <input type="text" id="sheetUrl" style="flex: 3; min-width: 260px;" placeholder="Dán link Google Sheet vào đây..." />
+      <input type="text" id="sheetName" class="tab-locked" style="flex: 1; min-width: 140px;" value="Cửa hàng" readonly title="Đã khóa cứng tab Cửa hàng" />
+      <input type="number" id="headerRow" style="width: 105px;" value="3" title="Dòng tiêu đề cột (ID | Tên Cửa Hàng...)" placeholder="Dòng Header" />
+      <button class="btn-outline" onclick="verifySheet()">🔗 Kết nối Sheet</button>
+    </div>
+    <div id="sheetInfoMsg" style="font-size: 12px; color: #059669; margin-top: 6px; font-weight: 600;"></div>
+  </div>
+
+  <!-- PANEL CÀI ĐẶT HOT-RELOAD ENV -->
+  <div class="card" id="settingsPanel">
+    <strong style="display:block; margin-bottom: 8px;">⚙️ Cấu hình Gemini API Key & Model (Áp dụng ngay không cần Restart)</strong>
+    <div class="flex-row">
+      <input type="password" id="cfgApiKey" style="flex: 2; min-width: 250px;" placeholder="Dán Gemini API Key mới..." />
+      <select id="cfgModel" style="flex: 1; min-width: 180px;">
+        <option value="gemini-2.5-flash">gemini-2.5-flash (Khuyên dùng - Nhanh)</option>
+        <option value="gemini-2.5-pro">gemini-2.5-pro (Đọc bill mờ/phức tạp)</option>
+        <option value="gemini-2.0-flash">gemini-2.0-flash (Dự phòng quota)</option>
+        <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (Siêu nhẹ)</option>
+      </select>
+      <button class="btn-primary" onclick="saveSettings()">💾 Lưu & Áp dụng ngay</button>
+    </div>
+  </div>
+
+  <!-- KHU VỰC THAO TÁC CHÍNH -->
+  <div class="main-grid">
+    <div class="card">
+      <div id="pasteZone" class="paste-box" tabindex="0">
+        Click vào khung này và nhấn <b>Ctrl + V</b> để dán ảnh bill từ Zalo
+        <img id="previewImg" />
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>1. ID Cửa Hàng (Tự bóc hoặc nhập tay):</label>
+          <input type="text" id="storeId" class="id-input" placeholder="Tự động nhận diện ID..." oninput="clearPreview()" />
+        </div>
+        <div class="form-group">
+          <label>Ngày TT (DD/MM/YYYY):</label>
+          <input type="text" id="ngayTt" oninput="clearPreview()" />
+        </div>
+        <div class="form-group">
+          <label>Tiền mặt:</label>
+          <input type="number" id="tienMat" placeholder="0" oninput="clearPreview()" />
+        </div>
+        <div class="form-group">
+          <label>Chuyển khoản:</label>
+          <input type="number" id="chuyenKhoan" placeholder="0" oninput="clearPreview()" />
+        </div>
+        <div class="form-group">
+          <label>Quảng cáo:</label>
+          <input type="number" id="quangCao" placeholder="0" oninput="clearPreview()" />
+        </div>
+        <div class="form-group">
+          <label>Mã GD (Check trùng):</label>
+          <input type="text" id="maGd" oninput="clearPreview()" />
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top: 10px;">
+        <label>Nội dung CK / Ghi chú:</label>
+        <input type="text" id="noiDung" />
+      </div>
+
+      <div class="flex-row" style="margin-top: 14px;">
+        <button class="btn-primary" id="btnRun" style="flex: 1;" onclick="runPreview()">▶ RUN (Kiểm tra & Xem vị trí thay đổi)</button>
+        <button class="btn-outline" onclick="resetForm()">Làm mới</button>
+      </div>
+      <div id="statusMsg" class="status-bar"></div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size: 15px;">🔍 Kiểm tra thay đổi trên tab "Cửa hàng"</strong>
+      <p style="font-size: 12.5px; color: #6b7280; margin-top: 4px;">
+        Dán ảnh bill (<b>Ctrl + V</b>) để AI tự bóc thông tin và dò đúng cột Tháng, hoặc bấm <b>RUN</b> nếu bạn sửa tay.
+      </p>
+
+      <div id="diffBox" class="diff-box">
+        <div id="diffContent"></div>
+        <div id="warnBox"></div>
+        <button class="btn-success" id="btnApprove" style="width: 100%; margin-top: 12px; padding: 11px; font-size: 14px;" onclick="approveWrite()">
+          ✅ APPROVE & GHI VÀO TAB "CỬA HÀNG"
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BẢNG AUDIT LOGS & NÚT XUẤT FILE -->
+  <div class="card">
+    <div class="flex-row" style="justify-content: space-between;">
+      <strong>📜 Lịch sử các trường đã xuất & duyệt (Audit Logs)</strong>
+      <div class="flex-row">
+        <button class="btn-outline" style="padding: 5px 12px; font-size: 12.5px;" onclick="loadLogs()">🔄 Tải lại Log</button>
+        <button class="btn-success" style="padding: 5px 12px; font-size: 12.5px;" onclick="exportLogs()">📥 Xuất file Logs (.CSV)</button>
+      </div>
+    </div>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Thời gian</th>
+            <th>Tab</th>
+            <th>ID</th>
+            <th>Tên Cửa Hàng</th>
+            <th>Vị trí ô</th>
+            <th>Ngày TT</th>
+            <th>Tiền mặt</th>
+            <th>Chuyển khoản</th>
+            <th>Quảng cáo</th>
+            <th>Mã GD</th>
+          </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentPreview = null;
+
+  window.onload = async () => {
+    if (localStorage.getItem('savedSheetUrl')) {
+      document.getElementById('sheetUrl').value = localStorage.getItem('savedSheetUrl');
+    }
+    if (localStorage.getItem('savedHeaderRow')) {
+      document.getElementById('headerRow').value = localStorage.getItem('savedHeaderRow');
+    }
+    await loadConfig();
+    await loadLogs();
+    if (document.getElementById('sheetUrl').value.trim()) {
+      await verifySheet();
+    }
+  };
+
+  async function loadConfig() {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    document.getElementById('cfgApiKey').value = data.api_key || '';
+    document.getElementById('cfgModel').value = data.model || 'gemini-2.5-flash';
+    document.getElementById('authBadge').innerHTML = data.google_logged_in
+      ? '<span style="color:#16a34a;">● Đã kết nối Google</span>'
+      : '<span style="color:#dc2626;">● Chưa Login Google</span>';
+  }
+
+  function toggleSettings() {
+    const p = document.getElementById('settingsPanel');
+    p.style.display = p.style.display === 'block' ? 'none' : 'block';
+  }
+
+  async function saveSettings() {
+    const api_key = document.getElementById('cfgApiKey').value;
+    const model = document.getElementById('cfgModel').value;
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key, model })
+    });
+    const data = await res.json();
+    setStatus(data.message, '#16a34a');
+    document.getElementById('settingsPanel').style.display = 'none';
+  }
+
+  async function loginGoogle(force) {
+    setStatus('⏳ Đang mở cửa sổ xác thực Google trên trình duyệt...', '#2563eb');
+    const res = await fetch(`/api/google/login?force_relogin=${force}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) return setStatus('❌ ' + data.detail, '#dc2626');
+    setStatus('✅ ' + data.message, '#16a34a');
+    await loadConfig();
+  }
+
+  async function verifySheet() {
+    const sheet_url = document.getElementById('sheetUrl').value.trim();
+    if (!sheet_url) return setStatus('❌ Vui lòng dán link Google Sheet trước!', '#dc2626');
+    localStorage.setItem('savedSheetUrl', sheet_url);
+
+    setStatus('⏳ Đang kiểm tra kết nối file Sheet...', '#2563eb');
+    const res = await fetch('/api/sheets/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheet_url })
+    });
+    const data = await res.json();
+    if (!res.ok) return setStatus('❌ ' + data.detail, '#dc2626');
+
+    const tabInput = document.getElementById('sheetName');
+    tabInput.value = data.target_tab || 'Cửa hàng';
+
+    const infoEl = document.getElementById('sheetInfoMsg');
+    infoEl.style.color = '#059669';
+    infoEl.innerText = `✅ Đã kết nối "${data.title}" — Đã khóa cứng tab: "${tabInput.value}"`;
+    setStatus('', '');
+  }
+
+  document.addEventListener('paste', (e) => {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (let item of items) {
+      if (item.kind === 'file' && (item.type.startsWith('image/') || item.type === '')) {
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const fullBase64 = ev.target.result;
+          const img = document.getElementById('previewImg');
+          img.src = fullBase64;
+          img.style.display = 'block';
+
+          const parts = fullBase64.split(',');
+          const detectedMime = parts[0].match(/:(.*?);/)?.[1] || item.type || 'image/png';
+          await extractOCR(parts[1], detectedMime);
+        };
+        reader.readAsDataURL(blob);
+        break;
+      }
+    }
+  });
+
+  async function extractOCR(image_base64, mime_type) {
+    clearPreview();
+    setStatus('⏳ AI đang bóc tách bill & tự động dò ID cửa hàng...', '#2563eb');
+
+    const sheet_url = document.getElementById('sheetUrl').value.trim();
+    const sheet_name = document.getElementById('sheetName').value.trim() || 'Cửa hàng';
+    const header_row = Number(document.getElementById('headerRow').value) || 3;
+
+    const res = await fetch('/api/ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64, mime_type, sheet_url, sheet_name, header_row })
+    });
+    const data = await res.json();
+    if (!res.ok) return setStatus('❌ ' + data.detail, '#dc2626');
+
+    document.getElementById('storeId').value = data.store_id || '';
+    document.getElementById('ngayTt').value = data.ngay_tt || '';
+    document.getElementById('maGd').value = data.ma_gd || '';
+    document.getElementById('noiDung').value = data.noi_dung || '';
+
+    if (data.hinh_thuc === 'TM') {
+      document.getElementById('tienMat').value = data.so_tien || '';
+      document.getElementById('chuyenKhoan').value = '';
+    } else {
+      document.getElementById('chuyenKhoan').value = data.so_tien || '';
+      document.getElementById('tienMat').value = '';
+    }
+    document.getElementById('quangCao').value = '';
+
+    if (data.store_id) {
+      setStatus(`✅ Đã tự nhận diện ID "${data.store_id}"! Đang tải bản xem trước...`, '#16a34a');
+      await runPreview();
+    } else {
+      setStatus('⚠️ AI không thấy mã ID/tên cửa hàng rõ trên bill. Vui lòng nhập tay ID Cửa hàng rồi bấm RUN.', '#d97706');
+      document.getElementById('storeId').focus();
+    }
+  }
+
+  function clearPreview() {
+    currentPreview = null;
+    document.getElementById('diffBox').style.display = 'none';
+  }
+
+  function resetForm() {
+    clearPreview();
+    ['storeId', 'ngayTt', 'tienMat', 'chuyenKhoan', 'quangCao', 'maGd', 'noiDung'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('previewImg').style.display = 'none';
+    setStatus('', '');
+  }
+
+  async function runPreview() {
+    const sheet_url = document.getElementById('sheetUrl').value.trim();
+    const sheet_name = document.getElementById('sheetName').value.trim() || 'Cửa hàng';
+    const header_row = Number(document.getElementById('headerRow').value) || 3;
+    localStorage.setItem('savedSheetUrl', sheet_url);
+    localStorage.setItem('savedHeaderRow', header_row);
+
+    const payload = {
+      sheet_url,
+      sheet_name,
+      header_row,
+      store_id: document.getElementById('storeId').value,
+      ngay_tt: document.getElementById('ngayTt').value,
+      tien_mat: Number(document.getElementById('tienMat').value) || 0,
+      chuyen_khoan: Number(document.getElementById('chuyenKhoan').value) || 0,
+      quang_cao: Number(document.getElementById('quangCao').value) || 0,
+      ma_gd: document.getElementById('maGd').value,
+      noi_dung: document.getElementById('noiDung').value
+    };
+
+    setStatus('⏳ Đang đối soát trên tab "Cửa hàng"...', '#2563eb');
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) return setStatus('❌ ' + data.detail, '#dc2626');
+
+    currentPreview = { ...payload, ...data };
+    setStatus('', '');
+
+    document.getElementById('diffContent').innerHTML = `
+      <div><b>Tab thao tác:</b> <span class="badge">${data.sheet_name}</span></div>
+      <div><b>Cửa hàng:</b> ${data.store_name} (ID: <b>${payload.store_id}</b>)</div>
+      <div><b>Trạng thái hiện tại:</b> ${data.current_status}</div>
+      <div><b>Vị trí sẽ thay đổi:</b> <span class="badge">Tháng ${data.batch_number}</span> tại vùng ô <b>${data.cell_range_a1}</b> (Hàng ${data.target_row})</div>
+      <hr style="border:0; border-top:1px solid #bbf7d0; margin:8px 0;">
+      <div><b>Giá trị mới sẽ ghi đè:</b></div>
+      <div>• Ngày TT: <b>${payload.ngay_tt || '(Trống)'}</b></div>
+      <div>• Tiền mặt: <b>${payload.tien_mat.toLocaleString('vi-VN')}</b></div>
+      <div>• Chuyển khoản: <b>${payload.chuyen_khoan.toLocaleString('vi-VN')}</b></div>
+      <div>• Quảng cáo: <b>${payload.quang_cao.toLocaleString('vi-VN')}</b></div>
+    `;
+
+    document.getElementById('warnBox').innerHTML = data.warning
+      ? `<div class="warn-banner">⚠️ ${data.warning}</div>` : '';
+
+    document.getElementById('diffBox').style.display = 'block';
+  }
+
+  async function approveWrite() {
+    if (!currentPreview) return;
+    const btn = document.getElementById('btnApprove');
+    btn.disabled = true;
+    setStatus('⏳ Đang ghi vào tab "Cửa hàng"...', '#2563eb');
+
+    const res = await fetch('/api/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(currentPreview)
+    });
+    const data = await res.json();
+    btn.disabled = false;
+
+    if (!res.ok) return setStatus('❌ ' + data.detail, '#dc2626');
+
+    resetForm();
+    setStatus('✅ ' + data.message, '#16a34a');
+    await loadLogs();
+  }
+
+  async function loadLogs() {
+    const res = await fetch('/api/logs');
+    const logs = await res.json();
+    const tbody = document.getElementById('logBody');
+    tbody.innerHTML = logs.map(l => `
+      <tr>
+        <td>${l.timestamp}</td>
+        <td><span class="badge">${l.tab || 'Cửa hàng'}</span></td>
+        <td><b>${l.store_id}</b></td>
+        <td>${l.store_name}</td>
+        <td><b>${l.range}</b> (${l.batch})</td>
+        <td>${l.ngay_tt}</td>
+        <td>${Number(l.tien_mat).toLocaleString('vi-VN')}</td>
+        <td>${Number(l.chuyen_khoan).toLocaleString('vi-VN')}</td>
+        <td>${Number(l.quang_cao).toLocaleString('vi-VN')}</td>
+        <td>${l.ma_gd || '-'}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function exportLogs() {
+    setStatus('⏳ Đang tạo file CSV xuất lịch sử...', '#2563eb');
+    const res = await fetch('/api/logs/export');
+    if (!res.ok) {
+      const err = await res.json();
+      return setStatus('❌ ' + (err.detail || 'Không thể xuất file log'), '#dc2626');
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit_logs_cuahang_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    setStatus('✅ Đã tải file CSV lịch sử về máy!', '#16a34a');
+  }
+
+  function setStatus(msg, color) {
+    const el = document.getElementById('statusMsg');
+    el.style.color = color;
+    el.innerText = msg;
+  }
+</script>
+</body>
+</html>
